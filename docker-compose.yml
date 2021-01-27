@@ -1,0 +1,65 @@
+version: '3.2'
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:6.8.2
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - SERVICE_NAME=elasticsearch
+      - SERVICE_TAGS=elk
+      - SERVICE_CHECK_HTTP=/_cluster/health/
+      - SERVICE_CHECK_INTERVAL=10s
+      - SERVICE_CHECK_TIMEOUT=3s
+      - "ES_JAVA_OPTS: -Xms512m -Xmx512m"
+    networks:
+      - elk
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash-oss:6.8.2
+    volumes:
+      - source: ./pipelines
+        target: /usr/share/logstash/pipeline
+        type: bind
+    ports:
+      - "12201:12201/udp"
+      - "5000:5000"
+      - "9600:9600"
+    networks:
+      - elk
+    environment:
+      - SERVICE_NAME=logstash
+      - SERVICE_TAGS=elk
+      - SERVICE_CHECK_HTTP=/?pretty/
+      - SERVICE_CHECK_INTERVAL=10s
+      - SERVICE_CHECK_TIMEOUT=3s
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana-oss:6.8.2
+    ports:
+      - "5601:5601"
+    environment:
+      - SERVICE_NAME=kibana
+      - SERVICE_TAGS=elk
+      - SERVICE_CHECK_HTTP=/api/status/
+      - SERVICE_CHECK_INTERVAL=10s  
+    networks:
+      - elk
+    depends_on:
+      - elasticsearch
+      
+  registrator:
+    image: gliderlabs/registrator:latest
+    container_name: registrator
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    command: "-cleanup=true -ip ${HOST_IP} consul://consul.service.consul:8500"
+    
+networks:
+  elk:
+    driver: bridge
